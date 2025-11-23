@@ -1,0 +1,7 @@
+{
+  "drinkType": "latte",
+  "size": "medium",
+  "milk": "oat milk",
+  "extras": ["vanilla"],
+  "name": "John"
+}

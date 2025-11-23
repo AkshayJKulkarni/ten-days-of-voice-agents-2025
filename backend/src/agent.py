@@ -1,6 +1,7 @@
 import logging
 
 from dotenv import load_dotenv
+from order_helper import save_order_to_json, is_order_complete
 from livekit.agents import (
     Agent,
     AgentSession,
@@ -12,9 +13,10 @@ from livekit.agents import (
     cli,
     metrics,
     tokenize,
-    # function_tool,
-    # RunContext
+    function_tool,
+    RunContext
 )
+import json
 from livekit.plugins import murf, silero, google, deepgram, noise_cancellation
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
@@ -23,31 +25,91 @@ logger = logging.getLogger("agent")
 load_dotenv(".env.local")
 
 
-class Assistant(Agent):
+class CoffeeShopBarista(Agent):
     def __init__(self) -> None:
         super().__init__(
-            instructions="""You are a helpful voice AI assistant. The user is interacting with you via voice, even if you perceive the conversation as text.
-            You eagerly assist users with their questions by providing information from your extensive knowledge.
-            Your responses are concise, to the point, and without any complex formatting or punctuation including emojis, asterisks, or other symbols.
-            You are curious, friendly, and have a sense of humor.""",
+            instructions="""You are a friendly coffee shop barista. Your job is to take coffee orders step by step.
+            You must collect: drink type, size, milk preference, extras, and customer name.
+            
+            IMPORTANT: When the customer provides any order information, you MUST call the update_order function with the appropriate field and value.
+            
+            Use update_order function for:
+            - drinkType: when customer says what drink they want
+            - size: when customer says small, medium, large
+            - milk: when customer mentions milk type
+            - extras: when customer mentions extras like sugar, vanilla, etc.
+            - name: when customer provides their name
+            
+            Ask one question at a time and be conversational. Keep responses short and friendly.
+            Guide customers through the ordering process systematically.
+            Don't use complex formatting, emojis, or symbols in your responses.""",
         )
+        self.order_state = {
+            "drinkType": "",
+            "size": "",
+            "milk": "",
+            "extras": [],
+            "name": ""
+        }
+        self.room = None
 
-    # To add tools, use the @function_tool decorator.
-    # Here's an example that adds a simple weather tool.
-    # You also have to add `from livekit.agents import function_tool, RunContext` to the top of this file
-    # @function_tool
-    # async def lookup_weather(self, context: RunContext, location: str):
-    #     """Use this tool to look up current weather information in the given location.
-    #
-    #     If the location is not supported by the weather service, the tool will indicate this. You must tell the user the location's weather is unavailable.
-    #
-    #     Args:
-    #         location: The location to look up weather information for (e.g. city name)
-    #     """
-    #
-    #     logger.info(f"Looking up weather for {location}")
-    #
-    #     return "sunny with a temperature of 70 degrees."
+    async def broadcast_state(self, order_state):
+        """Send order state to frontend via data channel"""
+        if self.room:
+            await self.room.local_participant.publish_data(
+                json.dumps({"type": "order_state", "data": order_state}).encode()
+            )
+
+
+
+    @function_tool
+    async def update_order(self, context: RunContext, field: str, value: str):
+        """Update a field in the order state
+        
+        Args:
+            field: The field to update (drinkType, size, milk, extras, name)
+            value: The value to set for the field
+        """
+        if field == "extras":
+            if value not in self.order_state["extras"]:
+                self.order_state["extras"].append(value)
+        else:
+            self.order_state[field] = value
+        
+        self.room = context.room
+        logger.info(f"Updated order: {self.order_state}")
+        
+        await self.broadcast_state(self.order_state)
+        
+        if is_order_complete(self.order_state):
+            filepath = save_order_to_json(self.order_state)
+            await self.room.local_participant.publish_data(
+                json.dumps({"type": "order_complete", "data": self.order_state}).encode()
+            )
+            await context.send_data(
+                json.dumps({"type": "final_order", "data": self.order_state}).encode()
+            )
+            # Reset order state for next customer
+            self.order_state = {
+                "drinkType": "",
+                "size": "",
+                "milk": "",
+                "extras": [],
+                "name": ""
+            }
+            return f"Your order is complete! Saving it now. Order saved successfully."
+        
+        # Guide to next step
+        if not self.order_state["drinkType"]:
+            return "What drink would you like today?"
+        elif not self.order_state["size"]:
+            return "What size would you like? Small, medium, or large?"
+        elif not self.order_state["milk"]:
+            return "What type of milk would you prefer? Whole, skim, oat, almond, or soy?"
+        elif not self.order_state["name"]:
+            return "Any extras like sugar, vanilla, or whipped cream? If not, just say none. Also, what name should I put on the order?"
+        
+        return "Let me know if you need anything else!"
 
 
 def prewarm(proc: JobProcess):
@@ -123,7 +185,7 @@ async def entrypoint(ctx: JobContext):
 
     # Start the session, which initializes the voice pipeline and warms up the models
     await session.start(
-        agent=Assistant(),
+        agent=CoffeeShopBarista(),
         room=ctx.room,
         room_input_options=RoomInputOptions(
             # For telephony applications, use `BVCTelephony` for best results
