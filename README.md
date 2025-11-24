@@ -207,7 +207,7 @@ This project is based on MIT-licensed templates from LiveKit and includes integr
 
 Remember, the goal is to learn, experiment, and build amazing voice AI agents. Don't hesitate to be creative and push the boundaries of what's possible with Murf Falcon and LiveKit!
 
-Good luck with the challenge!
+Good luck with the challenge!..
 
 ---
 
