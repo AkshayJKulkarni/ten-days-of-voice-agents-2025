@@ -24,6 +24,8 @@ export function OrderSummary() {
   const room = useRoomContext();
 
   useEffect(() => {
+    if (!room) return;
+    
     const handleDataReceived = (payload: Uint8Array, participant?: RemoteParticipant, kind?: DataPacket_Kind) => {
       try {
         const message = JSON.parse(new TextDecoder().decode(payload));

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 interface Order {
   drinkType: string;
@@ -15,18 +15,20 @@ export function OrderSummary() {
 
   const fetchOrders = () => {
     fetch('/api/orders')
-      .then(res => res.json())
-      .then(orders => {
-        if (orders.length > 0) {
+      .then((res) => res.json())
+      .then((orders) => {
+        if (orders && orders.length > 0) {
           setOrder(orders[orders.length - 1]);
         }
+      })
+      .catch((error) => {
+        console.error('Failed to fetch orders:', error);
       });
   };
 
   useEffect(() => {
     fetchOrders();
     const interval = setInterval(fetchOrders, 2000);
-    
     const handleMessage = (event: MessageEvent) => {
       try {
         const message = JSON.parse(event.data);
@@ -37,7 +39,7 @@ export function OrderSummary() {
         console.error('Failed to parse message:', error);
       }
     };
-    
+
     window.addEventListener('message', handleMessage);
     return () => {
       clearInterval(interval);
@@ -48,8 +50,8 @@ export function OrderSummary() {
   if (!order) return null;
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg border p-4 max-w-sm">
-      <h3 className="text-lg font-semibold mb-3">Latest Order</h3>
+    <div className="max-w-sm rounded-lg border bg-white p-4 shadow-lg dark:bg-gray-800">
+      <h3 className="mb-3 text-lg font-semibold">Latest Order</h3>
       <div className="space-y-2 text-sm">
         <div className="flex justify-between">
           <span className="text-gray-600">Drink:</span>
