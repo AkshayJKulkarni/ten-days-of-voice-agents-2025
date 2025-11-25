@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import type { AppConfig } from '@/app-config';
 import { ChatTranscript } from '@/components/app/chat-transcript';
-import { OrderSummary } from '@/components/app/order-summary';
+import { TutorStatus } from '@/components/app/tutor-status';
 import { PreConnectMessage } from '@/components/app/preconnect-message';
 import { TileLayout } from '@/components/app/tile-layout';
 import {
@@ -110,8 +110,8 @@ export const SessionView = ({
         </ScrollArea>
       </div>
 
-      {/* Order Summary */}
-      <OrderSummary />
+      {/* Tutor Status */}
+      <TutorStatus />
 
       {/* Tile Layout */}
       <TileLayout chatOpen={chatOpen} />

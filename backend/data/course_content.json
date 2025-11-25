@@ -1,0 +1,28 @@
+{
+  "concepts": [
+    {
+      "id": "variables",
+      "title": "Variables",
+      "summary": "Variables are containers that store data values. They have a name and can hold different types of information like numbers, text, or true/false values.",
+      "sample_question": "What is a variable and how do you create one in Python?"
+    },
+    {
+      "id": "loops",
+      "title": "Loops",
+      "summary": "Loops allow you to repeat code multiple times. The most common types are 'for' loops (repeat a specific number of times) and 'while' loops (repeat while a condition is true).",
+      "sample_question": "Can you explain the difference between a for loop and a while loop?"
+    },
+    {
+      "id": "functions",
+      "title": "Functions",
+      "summary": "Functions are reusable blocks of code that perform specific tasks. They can take inputs (parameters) and return outputs, helping organize code and avoid repetition.",
+      "sample_question": "How do you define a function that takes two numbers and returns their sum?"
+    },
+    {
+      "id": "conditionals",
+      "title": "Conditionals",
+      "summary": "Conditionals use if/else statements to make decisions in code. They allow programs to execute different code paths based on whether certain conditions are true or false.",
+      "sample_question": "How would you write an if statement to check if a number is positive or negative?"
+    }
+  ]
+}

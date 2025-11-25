@@ -1,7 +1,7 @@
 import logging
 
 from dotenv import load_dotenv
-from order_helper import save_order_to_json, is_order_complete
+from tutor_content import load_course_content, select_concept, get_available_concepts
 from livekit.agents import (
     Agent,
     AgentSession,
@@ -25,91 +25,197 @@ logger = logging.getLogger("agent")
 load_dotenv(".env.local")
 
 
-class CoffeeShopBarista(Agent):
+class TeachTheTutor(Agent):
     def __init__(self) -> None:
         super().__init__(
-            instructions="""You are a friendly coffee shop barista. Your job is to take coffee orders step by step.
-            You must collect: drink type, size, milk preference, extras, and customer name.
+            instructions="""You are a supportive programming tutor with three modes:
             
-            IMPORTANT: When the customer provides any order information, you MUST call the update_order function with the appropriate field and value.
+            LEARN MODE: Explain programming concepts clearly using provided summaries
+            QUIZ MODE: Ask questions to test understanding  
+            TEACH_BACK MODE: Have students explain concepts back to you and provide encouraging feedback
             
-            Use update_order function for:
-            - drinkType: when customer says what drink they want
-            - size: when customer says small, medium, large
-            - milk: when customer mentions milk type
-            - extras: when customer mentions extras like sugar, vanilla, etc.
-            - name: when customer provides their name
+            Always be supportive, patient, and encouraging. Never make students feel bad about mistakes.
+            Use simple language appropriate for beginners. Keep explanations clear and concise.
             
-            Ask one question at a time and be conversational. Keep responses short and friendly.
-            Guide customers through the ordering process systematically.
-            Don't use complex formatting, emojis, or symbols in your responses.""",
+            Available concepts: variables, loops, functions, conditionals
+            
+            Process:
+            1. Ask user which mode they prefer (learn, quiz, or teach_back)
+            2. Ask which concept they want to work on
+            3. Execute the chosen mode
+            4. After completion, offer to switch modes or concepts
+            
+            Be encouraging and supportive throughout the learning process.""",
         )
-        self.order_state = {
-            "drinkType": "",
-            "size": "",
-            "milk": "",
-            "extras": [],
-            "name": ""
-        }
+        self.current_mode = ""
+        self.current_concept = None
+        self.session_started = False
+        self.available_concepts = get_available_concepts()
         self.room = None
 
-    async def broadcast_state(self, order_state):
-        """Send order state to frontend via data channel"""
-        if self.room:
-            await self.room.local_participant.publish_data(
-                json.dumps({"type": "order_state", "data": order_state}).encode()
-            )
+    def get_voice_for_mode(self, mode):
+        """Get appropriate voice for each mode"""
+        voices = {
+            "learn": "en-US-matthew",
+            "quiz": "en-US-alicia", 
+            "teach_back": "en-US-ken"
+        }
+        return voices.get(mode, "en-US-matthew")
+    
+    def evaluate_teach_back_response(self, user_explanation, concept_title):
+        """Generate encouraging feedback for teach_back mode"""
+        explanation_lower = user_explanation.lower()
+        concept_lower = concept_title.lower()
+        
+        # Identify strengths
+        strengths = []
+        if concept_lower in explanation_lower:
+            strengths.append("you mentioned the concept by name")
+        if any(word in explanation_lower for word in ["example", "like", "such as"]):
+            strengths.append("you provided examples")
+        if any(word in explanation_lower for word in ["use", "used", "help", "allows"]):
+            strengths.append("you explained how it's used")
+        if len(user_explanation.split()) > 10:
+            strengths.append("you gave a detailed explanation")
+        if any(word in explanation_lower for word in ["store", "contain", "hold"]) and "variable" in concept_lower:
+            strengths.append("you understood the storage concept")
+        if any(word in explanation_lower for word in ["repeat", "again", "multiple"]) and "loop" in concept_lower:
+            strengths.append("you grasped the repetition idea")
+        
+        # Default strengths if none detected
+        if not strengths:
+            strengths = ["you attempted to explain the concept", "you're engaging with the material"]
+        
+        # Select up to 2 strengths
+        selected_strengths = strengths[:2]
+        
+        # Generate suggestions based on concept
+        suggestions = {
+            "variables": "try mentioning how variables can store different types of data",
+            "loops": "consider explaining when you might use a loop in real programming",
+            "functions": "think about how functions help organize and reuse code",
+            "conditionals": "try describing how if statements help programs make decisions"
+        }
+        
+        suggestion = suggestions.get(concept_lower, "try adding a simple example next time")
+        
+        # Build encouraging response
+        strengths_text = " and ".join(selected_strengths)
+        return f"Great effort! I noticed {strengths_text}. To make it even better, {suggestion}. You're doing well with programming concepts!"
 
 
 
     @function_tool
-    async def update_order(self, context: RunContext, field: str, value: str):
-        """Update a field in the order state
+    async def detect_intent(self, context: RunContext, user_input: str):
+        """Detect user intent for mode switching and concept selection
         
         Args:
-            field: The field to update (drinkType, size, milk, extras, name)
-            value: The value to set for the field
+            user_input: What the user said
         """
-        if field == "extras":
-            if value not in self.order_state["extras"]:
-                self.order_state["extras"].append(value)
-        else:
-            self.order_state[field] = value
-        
         self.room = context.room
-        logger.info(f"Updated order: {self.order_state}")
         
-        await self.broadcast_state(self.order_state)
+        if not self.session_started:
+            self.session_started = True
+            return "Hi! I'm your programming tutor. Which mode would you like: learn, quiz, or teach_back? And which concept: variables, loops, functions, or conditionals?"
         
-        if is_order_complete(self.order_state):
-            filepath = save_order_to_json(self.order_state)
-            await self.room.local_participant.publish_data(
-                json.dumps({"type": "order_complete", "data": self.order_state}).encode()
-            )
-            await context.send_data(
-                json.dumps({"type": "final_order", "data": self.order_state}).encode()
-            )
-            # Reset order state for next customer
-            self.order_state = {
-                "drinkType": "",
-                "size": "",
-                "milk": "",
-                "extras": [],
-                "name": ""
+        user_lower = user_input.lower()
+        
+        # Detect mode switching intents
+        if "learn mode" in user_lower or "switch to learn" in user_lower:
+            return self.switch_mode("learn")
+        elif "quiz mode" in user_lower or "switch to quiz" in user_lower:
+            return self.switch_mode("quiz")
+        elif "teach back mode" in user_lower or "teach_back mode" in user_lower or "switch to teach back" in user_lower:
+            return self.switch_mode("teach_back")
+        
+        # Detect concept selection
+        for concept_id in self.available_concepts:
+            if concept_id in user_lower:
+                self.current_concept = select_concept(concept_id)
+                if self.current_mode:
+                    return self.execute_mode()
+                else:
+                    return f"Great! I've selected {concept_id}. Now which mode would you like: learn, quiz, or teach_back?"
+        
+        # Default response
+        if not self.current_concept:
+            return "Please choose a concept first: variables, loops, functions, or conditionals."
+        elif not self.current_mode:
+            return "Which mode would you like: learn, quiz, or teach_back?"
+        else:
+            return "I'm ready to help! What would you like to do?"
+    
+    def switch_mode(self, new_mode):
+        """Switch to a new mode while preserving concept"""
+        self.current_mode = new_mode
+        self.broadcast_tutor_state()
+        
+        if not self.current_concept:
+            return f"Switched to {new_mode} mode! Please choose a concept: variables, loops, functions, or conditionals."
+        
+        return self.execute_mode()
+    
+    async def broadcast_tutor_state(self):
+        """Send current tutor state to frontend"""
+        if self.room:
+            state = {
+                "mode": self.current_mode,
+                "concept": self.current_concept.get('title', '') if self.current_concept else ''
             }
-            return f"Your order is complete! Saving it now. Order saved successfully."
+            await self.room.local_participant.publish_data(
+                json.dumps({"type": "tutor_state", "data": state}).encode()
+            )
+    
+    @function_tool
+    async def set_concept(self, context: RunContext, concept_id: str):
+        """Set the concept to work on
         
-        # Guide to next step
-        if not self.order_state["drinkType"]:
-            return "What drink would you like today?"
-        elif not self.order_state["size"]:
-            return "What size would you like? Small, medium, or large?"
-        elif not self.order_state["milk"]:
-            return "What type of milk would you prefer? Whole, skim, oat, almond, or soy?"
-        elif not self.order_state["name"]:
-            return "Any extras like sugar, vanilla, or whipped cream? If not, just say none. Also, what name should I put on the order?"
+        Args:
+            concept_id: The concept ID (variables, loops, functions, conditionals)
+        """
+        if concept_id not in self.available_concepts:
+            return f"Please choose from: {', '.join(self.available_concepts)}"
         
-        return "Let me know if you need anything else!"
+        self.current_concept = select_concept(concept_id)
+        await self.broadcast_tutor_state()
+        
+        if self.current_mode:
+            return self.execute_mode()
+        else:
+            return f"Great! I've selected {concept_id}. Now which mode would you like: learn, quiz, or teach_back?"
+    
+    def execute_mode(self):
+        """Execute the current mode"""
+        if not self.current_concept:
+            return "Please select a concept first."
+        
+        concept = self.current_concept
+        
+        if self.current_mode == "learn":
+            return f"Let me explain {concept['title']}. {concept['summary']} Would you like me to explain another concept or switch modes?"
+        
+        elif self.current_mode == "quiz":
+            return f"Quiz time! {concept['sample_question']} Take your time to think about it."
+        
+        elif self.current_mode == "teach_back":
+            return f"Now it's your turn! Can you explain {concept['title']} back to me in your own words? Don't worry about being perfect."
+        
+        return "Please choose a mode: learn, quiz, or teach_back."
+    
+    @function_tool
+    async def give_feedback(self, context: RunContext, student_response: str):
+        """Provide feedback on student's explanation
+        
+        Args:
+            student_response: What the student said
+        """
+        if self.current_mode == "teach_back" and self.current_concept:
+            feedback = self.evaluate_teach_back_response(student_response, self.current_concept['title'])
+            return f"{feedback} Would you like to try another concept or switch to a different mode?"
+        elif self.current_mode == "quiz":
+            return "Nice work on that question! Learning programming takes practice. Want to try another concept or mode?"
+        else:
+            return "Would you like to switch modes or try a different concept?"
 
 
 def prewarm(proc: JobProcess):
@@ -118,35 +224,25 @@ def prewarm(proc: JobProcess):
 
 async def entrypoint(ctx: JobContext):
     # Logging setup
-    # Add any other context you want in all log entries here
     ctx.log_context_fields = {
         "room": ctx.room.name,
     }
 
-    # Set up a voice AI pipeline using OpenAI, Cartesia, AssemblyAI, and the LiveKit turn detector
+    # Create agent instance
+    agent = TeachTheTutor()
+
+    # Set up a voice AI pipeline
     session = AgentSession(
-        # Speech-to-text (STT) is your agent's ears, turning the user's speech into text that the LLM can understand
-        # See all available models at https://docs.livekit.io/agents/models/stt/
         stt=deepgram.STT(model="nova-3"),
-        # A Large Language Model (LLM) is your agent's brain, processing user input and generating a response
-        # See all available models at https://docs.livekit.io/agents/models/llm/
-        llm=google.LLM(
-                model="gemini-2.5-flash",
-            ),
-        # Text-to-speech (TTS) is your agent's voice, turning the LLM's text into speech that the user can hear
-        # See all available models as well as voice selections at https://docs.livekit.io/agents/models/tts/
+        llm=google.LLM(model="gemini-2.5-flash"),
         tts=murf.TTS(
-                voice="en-US-matthew", 
-                style="Conversation",
-                tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
-                text_pacing=True
-            ),
-        # VAD and turn detection are used to determine when the user is speaking and when the agent should respond
-        # See more at https://docs.livekit.io/agents/build/turns
+            voice="en-US-matthew",  # Default voice
+            style="Conversation",
+            tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
+            text_pacing=True
+        ),
         turn_detection=MultilingualModel(),
         vad=ctx.proc.userdata["vad"],
-        # allow the LLM to generate a response while waiting for the end of turn
-        # See more at https://docs.livekit.io/agents/build/audio/#preemptive-generation
         preemptive_generation=True,
     )
 
@@ -183,12 +279,11 @@ async def entrypoint(ctx: JobContext):
     # # Start the avatar and wait for it to join
     # await avatar.start(session, room=ctx.room)
 
-    # Start the session, which initializes the voice pipeline and warms up the models
+    # Start the session
     await session.start(
-        agent=CoffeeShopBarista(),
+        agent=agent,
         room=ctx.room,
         room_input_options=RoomInputOptions(
-            # For telephony applications, use `BVCTelephony` for best results
             noise_cancellation=noise_cancellation.BVC(),
         ),
     )
