@@ -1,0 +1,48 @@
+{
+  "about": "VoiceFlow AI is a leading conversational AI platform that helps businesses build, deploy, and manage intelligent voice and chat agents. Founded in 2019, we serve over 100,000+ companies worldwide with our no-code/low-code solution for creating sophisticated AI assistants.",
+  "product_overview": "Our platform offers drag-and-drop conversation design, multi-channel deployment (voice, web, mobile, WhatsApp), advanced NLP capabilities, seamless integrations with CRMs and databases, real-time analytics, and enterprise-grade security. Build once, deploy everywhere.",
+  "target_users": "Customer service teams, sales organizations, marketing departments, product managers, developers, and enterprises looking to automate conversations, improve customer experience, reduce support costs, and scale their operations efficiently.",
+  "pricing": "Starter Plan: $19/month for small teams. Professional Plan: $99/month for growing businesses. Enterprise Plan: Custom pricing for large organizations. All plans include free trial, 24/7 support, and no setup fees.",
+  "faqs": [
+    {
+      "question": "How quickly can we get started?",
+      "answer": "Most teams are up and running within 24-48 hours. Our onboarding team provides dedicated support, templates, and training to ensure smooth implementation."
+    },
+    {
+      "question": "Do you integrate with existing systems?",
+      "answer": "Yes, we have 200+ pre-built integrations including Salesforce, HubSpot, Zendesk, Slack, Microsoft Teams, and custom API connections for any system."
+    },
+    {
+      "question": "What languages do you support?",
+      "answer": "We support 40+ languages including English, Spanish, French, German, Hindi, Mandarin, Japanese, and more. Multi-language agents can be built on the same platform."
+    },
+    {
+      "question": "Is there a free trial?",
+      "answer": "Yes, we offer a 14-day free trial with full access to all features. No credit card required to start, and our team provides hands-on support during the trial."
+    },
+    {
+      "question": "How secure is the platform?",
+      "answer": "Enterprise-grade security with SOC 2 Type II compliance, GDPR compliance, end-to-end encryption, role-based access controls, and data residency options."
+    },
+    {
+      "question": "Can we customize the AI responses?",
+      "answer": "Absolutely. Full control over conversation flows, response templates, personality settings, and you can train the AI on your specific business data and terminology."
+    },
+    {
+      "question": "What kind of support do you provide?",
+      "answer": "24/7 technical support, dedicated customer success managers for Enterprise clients, comprehensive documentation, video tutorials, and live training sessions."
+    },
+    {
+      "question": "How does pricing scale with usage?",
+      "answer": "Pricing is based on monthly conversations, not per agent. Higher tiers include more conversations, advanced features, and priority support. Enterprise plans offer unlimited usage."
+    },
+    {
+      "question": "Can we deploy on-premise?",
+      "answer": "Yes, we offer on-premise and private cloud deployment options for Enterprise customers with specific security or compliance requirements."
+    },
+    {
+      "question": "What's the typical ROI?",
+      "answer": "Customers typically see 40-60% reduction in support costs, 3x faster response times, and 25% increase in customer satisfaction within the first 3 months."
+    }
+  ]
+}
