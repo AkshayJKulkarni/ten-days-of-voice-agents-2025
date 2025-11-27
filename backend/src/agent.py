@@ -1,7 +1,7 @@
 import logging
 
 from dotenv import load_dotenv
-from tutor_content import load_course_content, select_concept, get_available_concepts
+from faq_loader import load_faq_data
 from livekit.agents import (
     Agent,
     AgentSession,
@@ -17,6 +17,7 @@ from livekit.agents import (
     RunContext
 )
 import json
+from datetime import datetime
 from livekit.plugins import murf, silero, google, deepgram, noise_cancellation
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
@@ -24,198 +25,232 @@ logger = logging.getLogger("agent")
 
 load_dotenv(".env.local")
 
+# Global lead state that persists during the session
+lead_state = {
+    "name": "",
+    "company": "",
+    "email": "",
+    "role": "",
+    "use_case": "",
+    "team_size": "",
+    "timeline": ""
+}
 
-class TeachTheTutor(Agent):
+
+class SalesSDR(Agent):
     def __init__(self) -> None:
         super().__init__(
-            instructions="""You are a supportive programming tutor with three modes:
+            instructions="""You are a warm, friendly Sales Development Representative (SDR) for our company.
             
-            LEARN MODE: Explain programming concepts clearly using provided summaries
-            QUIZ MODE: Ask questions to test understanding  
-            TEACH_BACK MODE: Have students explain concepts back to you and provide encouraging feedback
+            Your role is to:
+            1. Greet visitors warmly and make them feel welcome
+            2. Ask what brought them here and what they need help with
+            3. Keep conversations focused on understanding their needs
+            4. Use ONLY the FAQ content to answer product/company/pricing questions - DO NOT hallucinate
+            5. Naturally collect lead information throughout the conversation
+            6. When they're done, provide a summary and save their information
             
-            Always be supportive, patient, and encouraging. Never make students feel bad about mistakes.
-            Use simple language appropriate for beginners. Keep explanations clear and concise.
+            Lead information to collect:
+            - name: Their full name
+            - company: Company they work for
+            - email: Contact email
+            - role: Their job title/role
+            - use_case: What they want to use our product for
+            - team_size: Size of their team
+            - timeline: When they're looking to implement
             
-            Available concepts: variables, loops, functions, conditionals
+            Conversation flow:
+            - Start with warm greeting
+            - Ask what brought them here
+            - Listen to their needs and answer from FAQ
+            - Naturally weave in lead qualification questions
+            - When they say "that's all", "I'm done", "thank you" etc., summarize and save
             
-            Process:
-            1. Ask user which mode they prefer (learn, quiz, or teach_back)
-            2. Ask which concept they want to work on
-            3. Execute the chosen mode
-            4. After completion, offer to switch modes or concepts
-            
-            Be encouraging and supportive throughout the learning process.""",
+            Be conversational, helpful, and professional. Focus on their needs first, qualification second.""",
         )
-        self.current_mode = ""
-        self.current_concept = None
+        # Use global lead_state
+        global lead_state
+        self.lead_state = lead_state
         self.session_started = False
-        self.available_concepts = get_available_concepts()
+        self.conversation_complete = False
         self.room = None
-
-    def get_voice_for_mode(self, mode):
-        """Get appropriate voice for each mode"""
-        voices = {
-            "learn": "en-US-matthew",
-            "quiz": "en-US-alicia", 
-            "teach_back": "en-US-ken"
-        }
-        return voices.get(mode, "en-US-matthew")
+        
+        # Load FAQ data at startup
+        self.company_name, self.description, self.pricing, self.faq_list = load_faq_data()
     
-    def evaluate_teach_back_response(self, user_explanation, concept_title):
-        """Generate encouraging feedback for teach_back mode"""
-        explanation_lower = user_explanation.lower()
-        concept_lower = concept_title.lower()
+    def find_faq_answer(self, user_query: str) -> str:
+        """Find FAQ answer using keyword matching
         
-        # Identify strengths
-        strengths = []
-        if concept_lower in explanation_lower:
-            strengths.append("you mentioned the concept by name")
-        if any(word in explanation_lower for word in ["example", "like", "such as"]):
-            strengths.append("you provided examples")
-        if any(word in explanation_lower for word in ["use", "used", "help", "allows"]):
-            strengths.append("you explained how it's used")
-        if len(user_explanation.split()) > 10:
-            strengths.append("you gave a detailed explanation")
-        if any(word in explanation_lower for word in ["store", "contain", "hold"]) and "variable" in concept_lower:
-            strengths.append("you understood the storage concept")
-        if any(word in explanation_lower for word in ["repeat", "again", "multiple"]) and "loop" in concept_lower:
-            strengths.append("you grasped the repetition idea")
+        Args:
+            user_query: User's question or query
+            
+        Returns:
+            FAQ answer if found, None if not found
+        """
+        query_lower = user_query.lower()
         
-        # Default strengths if none detected
-        if not strengths:
-            strengths = ["you attempted to explain the concept", "you're engaging with the material"]
+        for faq_item in self.faq_list:
+            question = faq_item.get("question", "").lower()
+            
+            # Simple keyword matching - check if question words are in user query
+            question_words = question.split()
+            if any(word in query_lower for word in question_words if len(word) > 2):
+                return faq_item.get("answer", "")
         
-        # Select up to 2 strengths
-        selected_strengths = strengths[:2]
+        return None
+    
+    def save_lead_to_json(self) -> str:
+        """Save lead state to JSON file with timestamp"""
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"lead_{timestamp}.json"
         
-        # Generate suggestions based on concept
-        suggestions = {
-            "variables": "try mentioning how variables can store different types of data",
-            "loops": "consider explaining when you might use a loop in real programming",
-            "functions": "think about how functions help organize and reuse code",
-            "conditionals": "try describing how if statements help programs make decisions"
-        }
+        leads_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "leads")
+        os.makedirs(leads_dir, exist_ok=True)
         
-        suggestion = suggestions.get(concept_lower, "try adding a simple example next time")
+        filepath = os.path.join(leads_dir, filename)
         
-        # Build encouraging response
-        strengths_text = " and ".join(selected_strengths)
-        return f"Great effort! I noticed {strengths_text}. To make it even better, {suggestion}. You're doing well with programming concepts!"
+        # Add timestamp to lead data
+        lead_data = self.lead_state.copy()
+        lead_data["timestamp"] = datetime.now().isoformat()
+        
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(lead_data, f, indent=2, ensure_ascii=False)
+        
+        return filepath
+    
+    def detect_end_of_call(self, user_input: str) -> bool:
+        """Detect if user wants to end the conversation"""
+        end_phrases = ["that's all", "i'm done", "thanks", "thank you", "you can end the call", "goodbye", "bye"]
+        user_lower = user_input.lower()
+        return any(phrase in user_lower for phrase in end_phrases)
+    
+    def generate_lead_summary(self) -> str:
+        """Generate verbal summary of collected lead information"""
+        filled_fields = []
+        
+        if self.lead_state["name"]:
+            filled_fields.append(f"name is {self.lead_state['name']}")
+        if self.lead_state["company"]:
+            filled_fields.append(f"from {self.lead_state['company']}")
+        if self.lead_state["role"]:
+            filled_fields.append(f"working as {self.lead_state['role']}")
+        if self.lead_state["use_case"]:
+            filled_fields.append(f"interested in {self.lead_state['use_case']}")
+        
+        if filled_fields:
+            return f"Great! I have your information: {', '.join(filled_fields)}. I'll save this and someone from our team will follow up soon."
+        else:
+            return "Thank you for your time today! Feel free to reach out if you have any questions."
+    
+    def reset_lead_state(self):
+        """Reset lead state to empty values"""
+        global lead_state
+        for key in lead_state:
+            lead_state[key] = ""
+        self.lead_state = lead_state
+
+    def update_lead_info(self, field: str, value: str):
+        """Update lead information field"""
+        if field in self.lead_state:
+            self.lead_state[field] = value
+    
+    def get_missing_lead_fields(self) -> list:
+        """Get list of missing lead information fields"""
+        return [field for field, value in self.lead_state.items() if not value.strip()]
+    
+    def ask_for_missing_info(self) -> str:
+        """Ask for missing lead information naturally"""
+        missing = self.get_missing_lead_fields()
+        
+        if "name" in missing:
+            return "By the way, I'd love to know your name so I can personalize our conversation."
+        elif "company" in missing:
+            return "What company are you with?"
+        elif "role" in missing:
+            return "What's your role there?"
+        elif "use_case" in missing:
+            return "What would you be looking to use our solution for?"
+        elif "team_size" in missing:
+            return "How big is your team?"
+        elif "timeline" in missing:
+            return "What's your timeline for implementing something like this?"
+        elif "email" in missing:
+            return "Could I get your email so someone from our team can follow up with more details?"
+        
+        return ""
 
 
 
     @function_tool
-    async def detect_intent(self, context: RunContext, user_input: str):
-        """Detect user intent for mode switching and concept selection
+    async def handle_conversation(self, context: RunContext, user_input: str):
+        """Handle SDR conversation flow
         
         Args:
             user_input: What the user said
         """
         self.room = context.room
         
+        # Initial greeting
         if not self.session_started:
             self.session_started = True
-            return "Hi! I'm your programming tutor. Which mode would you like: learn, quiz, or teach_back? And which concept: variables, loops, functions, or conditionals?"
+            return f"Hi there! Welcome to {self.company_name}. I'm here to help answer any questions you might have. What brought you to us today?"
         
+        # Check for end-of-call
+        if self.detect_end_of_call(user_input):
+            summary = self.generate_lead_summary()
+            if any(self.lead_state.values()):
+                self.save_lead_to_json()
+            self.reset_lead_state()
+            return f"{summary} Have a great day!"
+        
+        # Try to find FAQ answer first
+        faq_answer = self.find_faq_answer(user_input)
+        if faq_answer:
+            # After answering FAQ, ask for missing info if needed
+            missing_info_question = self.ask_for_missing_info()
+            if missing_info_question:
+                return f"{faq_answer} {missing_info_question}"
+            return faq_answer
+        
+        # Extract lead information from user input
+        self.extract_lead_info(user_input)
+        
+        # Ask for missing information
+        missing_info_question = self.ask_for_missing_info()
+        if missing_info_question:
+            return missing_info_question
+        
+        # Default helpful response
+        return "That's great! Is there anything else about our product or company you'd like to know?"
+    
+    def extract_lead_info(self, user_input: str):
+        """Extract lead information from user input"""
         user_lower = user_input.lower()
         
-        # Detect mode switching intents
-        if "learn mode" in user_lower or "switch to learn" in user_lower:
-            return self.switch_mode("learn")
-        elif "quiz mode" in user_lower or "switch to quiz" in user_lower:
-            return self.switch_mode("quiz")
-        elif "teach back mode" in user_lower or "teach_back mode" in user_lower or "switch to teach back" in user_lower:
-            return self.switch_mode("teach_back")
+        # Simple extraction patterns
+        if "my name is" in user_lower or "i'm" in user_lower:
+            # Extract name after "my name is" or "i'm"
+            for phrase in ["my name is ", "i'm ", "i am "]:
+                if phrase in user_lower:
+                    name_part = user_input[user_lower.find(phrase) + len(phrase):].split()[0]
+                    if name_part and not self.lead_state["name"]:
+                        self.lead_state["name"] = name_part.capitalize()
         
-        # Detect concept selection
-        for concept_id in self.available_concepts:
-            if concept_id in user_lower:
-                self.current_concept = select_concept(concept_id)
-                if self.current_mode:
-                    return self.execute_mode()
-                else:
-                    return f"Great! I've selected {concept_id}. Now which mode would you like: learn, quiz, or teach_back?"
+        # Extract email if mentioned
+        if "@" in user_input and not self.lead_state["email"]:
+            words = user_input.split()
+            for word in words:
+                if "@" in word and "." in word:
+                    self.lead_state["email"] = word
         
-        # Default response
-        if not self.current_concept:
-            return "Please choose a concept first: variables, loops, functions, or conditionals."
-        elif not self.current_mode:
-            return "Which mode would you like: learn, quiz, or teach_back?"
-        else:
-            return "I'm ready to help! What would you like to do?"
-    
-    def switch_mode(self, new_mode):
-        """Switch to a new mode while preserving concept"""
-        self.current_mode = new_mode
-        self.broadcast_tutor_state()
-        
-        if not self.current_concept:
-            return f"Switched to {new_mode} mode! Please choose a concept: variables, loops, functions, or conditionals."
-        
-        return self.execute_mode()
-    
-    async def broadcast_tutor_state(self):
-        """Send current tutor state to frontend"""
-        if self.room:
-            state = {
-                "mode": self.current_mode,
-                "concept": self.current_concept.get('title', '') if self.current_concept else ''
-            }
-            await self.room.local_participant.publish_data(
-                json.dumps({"type": "tutor_state", "data": state}).encode()
-            )
-    
-    @function_tool
-    async def set_concept(self, context: RunContext, concept_id: str):
-        """Set the concept to work on
-        
-        Args:
-            concept_id: The concept ID (variables, loops, functions, conditionals)
-        """
-        if concept_id not in self.available_concepts:
-            return f"Please choose from: {', '.join(self.available_concepts)}"
-        
-        self.current_concept = select_concept(concept_id)
-        await self.broadcast_tutor_state()
-        
-        if self.current_mode:
-            return self.execute_mode()
-        else:
-            return f"Great! I've selected {concept_id}. Now which mode would you like: learn, quiz, or teach_back?"
-    
-    def execute_mode(self):
-        """Execute the current mode"""
-        if not self.current_concept:
-            return "Please select a concept first."
-        
-        concept = self.current_concept
-        
-        if self.current_mode == "learn":
-            return f"Let me explain {concept['title']}. {concept['summary']} Would you like me to explain another concept or switch modes?"
-        
-        elif self.current_mode == "quiz":
-            return f"Quiz time! {concept['sample_question']} Take your time to think about it."
-        
-        elif self.current_mode == "teach_back":
-            return f"Now it's your turn! Can you explain {concept['title']} back to me in your own words? Don't worry about being perfect."
-        
-        return "Please choose a mode: learn, quiz, or teach_back."
-    
-    @function_tool
-    async def give_feedback(self, context: RunContext, student_response: str):
-        """Provide feedback on student's explanation
-        
-        Args:
-            student_response: What the student said
-        """
-        if self.current_mode == "teach_back" and self.current_concept:
-            feedback = self.evaluate_teach_back_response(student_response, self.current_concept['title'])
-            return f"{feedback} Would you like to try another concept or switch to a different mode?"
-        elif self.current_mode == "quiz":
-            return "Nice work on that question! Learning programming takes practice. Want to try another concept or mode?"
-        else:
-            return "Would you like to switch modes or try a different concept?"
+        # Extract company info
+        if any(phrase in user_lower for phrase in ["work at", "from", "company is", "at"]) and not self.lead_state["company"]:
+            # Simple company extraction
+            for phrase in ["work at ", "from ", "company is ", "at "]:
+                if phrase in user_lower:
+                    company_part = user_input[user_lower.find(phrase) + len(phrase):].split()[0]
+                    if company_part:
+                        self.lead_state["company"] = company_part.capitalize()
 
 
 def prewarm(proc: JobProcess):

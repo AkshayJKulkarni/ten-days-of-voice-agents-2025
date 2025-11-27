@@ -1,0 +1,19 @@
+{
+  "company": "YourCompanyName",
+  "description": "Short explanation of what the company does.",
+  "pricing": "Basic pricing or free tier info.",
+  "faq": [
+    {
+      "question": "what does your product do",
+      "answer": "Placeholder answer about product functionality and main features."
+    },
+    {
+      "question": "do you have a free tier",
+      "answer": "Placeholder answer about free tier availability and limitations."
+    },
+    {
+      "question": "who is this for",
+      "answer": "Placeholder answer about target audience and ideal customers."
+    }
+  ]
+}
