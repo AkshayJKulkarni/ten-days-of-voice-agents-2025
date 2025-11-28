@@ -1,0 +1,184 @@
+[
+  {
+    "id": "bread_01",
+    "name": "Whole Wheat Bread",
+    "category": "Groceries",
+    "price": 40,
+    "tags": ["bread", "vegan"]
+  },
+  {
+    "id": "milk_01",
+    "name": "Full Cream Milk 1L",
+    "category": "Groceries",
+    "price": 65,
+    "tags": ["dairy"]
+  },
+  {
+    "id": "pasta_01",
+    "name": "Fusilli Pasta",
+    "category": "Groceries",
+    "price": 120,
+    "tags": ["pasta"]
+  },
+  {
+    "id": "rice_01",
+    "name": "Basmati Rice 1kg",
+    "category": "Groceries",
+    "price": 180,
+    "tags": ["rice", "grain"]
+  },
+  {
+    "id": "eggs_01",
+    "name": "Farm Fresh Eggs (12 pcs)",
+    "category": "Groceries",
+    "price": 85,
+    "tags": ["eggs", "protein"]
+  },
+  {
+    "id": "chips_01",
+    "name": "Classic Potato Chips",
+    "category": "Snacks",
+    "price": 25,
+    "tags": ["chips", "snack"]
+  },
+  {
+    "id": "cookies_01",
+    "name": "Chocolate Chip Cookies",
+    "category": "Snacks",
+    "price": 45,
+    "tags": ["cookies", "sweet"]
+  },
+  {
+    "id": "nuts_01",
+    "name": "Mixed Nuts 200g",
+    "category": "Snacks",
+    "price": 150,
+    "tags": ["nuts", "healthy"]
+  },
+  {
+    "id": "crackers_01",
+    "name": "Wheat Crackers",
+    "category": "Snacks",
+    "price": 35,
+    "tags": ["crackers", "snack"]
+  },
+  {
+    "id": "cola_01",
+    "name": "Cola 500ml",
+    "category": "Beverages",
+    "price": 30,
+    "tags": ["cola", "soft drink"]
+  },
+  {
+    "id": "juice_01",
+    "name": "Orange Juice 1L",
+    "category": "Beverages",
+    "price": 95,
+    "tags": ["juice", "orange"]
+  },
+  {
+    "id": "water_01",
+    "name": "Mineral Water 1L",
+    "category": "Beverages",
+    "price": 20,
+    "tags": ["water", "mineral"]
+  },
+  {
+    "id": "tea_01",
+    "name": "Green Tea Bags",
+    "category": "Beverages",
+    "price": 75,
+    "tags": ["tea", "green tea"]
+  },
+  {
+    "id": "sandwich_01",
+    "name": "Chicken Sandwich",
+    "category": "Prepared Foods",
+    "price": 120,
+    "tags": ["sandwich", "chicken"]
+  },
+  {
+    "id": "salad_01",
+    "name": "Caesar Salad",
+    "category": "Prepared Foods",
+    "price": 140,
+    "tags": ["salad", "healthy"]
+  },
+  {
+    "id": "pizza_01",
+    "name": "Margherita Pizza Slice",
+    "category": "Prepared Foods",
+    "price": 80,
+    "tags": ["pizza", "cheese"]
+  },
+  {
+    "id": "apple_01",
+    "name": "Red Apples 1kg",
+    "category": "Fruits and Vegetables",
+    "price": 160,
+    "tags": ["apple", "fruit"]
+  },
+  {
+    "id": "banana_01",
+    "name": "Fresh Bananas 1kg",
+    "category": "Fruits and Vegetables",
+    "price": 50,
+    "tags": ["banana", "fruit"]
+  },
+  {
+    "id": "tomato_01",
+    "name": "Fresh Tomatoes 1kg",
+    "category": "Fruits and Vegetables",
+    "price": 40,
+    "tags": ["tomato", "vegetable"]
+  },
+  {
+    "id": "onion_01",
+    "name": "Yellow Onions 1kg",
+    "category": "Fruits and Vegetables",
+    "price": 35,
+    "tags": ["onion", "vegetable"]
+  },
+  {
+    "id": "peanut_butter_01",
+    "name": "Peanut Butter 400g",
+    "category": "Groceries",
+    "price": 180,
+    "tags": ["peanut butter", "spread"]
+  },
+  {
+    "id": "pasta_sauce_01",
+    "name": "Tomato Pasta Sauce",
+    "category": "Groceries",
+    "price": 85,
+    "tags": ["sauce", "pasta"]
+  },
+  {
+    "id": "tea_bag_01",
+    "name": "Black Tea Bags",
+    "category": "Beverages",
+    "price": 60,
+    "tags": ["tea", "black tea"]
+  },
+  {
+    "id": "sugar_01",
+    "name": "White Sugar 1kg",
+    "category": "Groceries",
+    "price": 45,
+    "tags": ["sugar", "sweetener"]
+  },
+  {
+    "id": "lettuce_01",
+    "name": "Fresh Lettuce",
+    "category": "Fruits and Vegetables",
+    "price": 30,
+    "tags": ["lettuce", "vegetable"]
+  },
+  {
+    "id": "cucumber_01",
+    "name": "Fresh Cucumber 1kg",
+    "category": "Fruits and Vegetables",
+    "price": 25,
+    "tags": ["cucumber", "vegetable"]
+  }
+]

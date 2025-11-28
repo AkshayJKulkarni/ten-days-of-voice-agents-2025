@@ -1,7 +1,22 @@
 import logging
+import os
 
 from dotenv import load_dotenv
 from faq_loader import load_faq_data
+
+def load_catalog():
+    """Load catalog from day7_catalog.json and return item_id -> item_data mapping"""
+    try:
+        catalog_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "shared-data", "day7_catalog.json")
+        with open(catalog_path, 'r', encoding='utf-8') as f:
+            catalog_list = json.load(f)
+        
+        # Convert list to dictionary mapping item_id -> item_data
+        catalog = {item["id"]: item for item in catalog_list}
+        return catalog
+    except Exception as e:
+        logger.error(f"Failed to load catalog: {e}")
+        return {}
 from livekit.agents import (
     Agent,
     AgentSession,
@@ -25,6 +40,12 @@ logger = logging.getLogger("agent")
 
 load_dotenv(".env.local")
 
+# Global cart state that persists during the session
+cart = {
+    "items": [],
+    "total": 0
+}
+
 # Global lead state that persists during the session
 lead_state = {
     "name": "",
@@ -36,37 +57,86 @@ lead_state = {
     "timeline": ""
 }
 
+def add_to_cart(item_id, qty):
+    """Add item to cart or update quantity if exists"""
+    catalog = load_catalog()
+    if item_id not in catalog:
+        return False
+    
+    # Check if item already in cart
+    for item in cart["items"]:
+        if item["item_id"] == item_id:
+            item["qty"] += qty
+            update_cart_total()
+            return True
+    
+    # Add new item
+    cart["items"].append({
+        "item_id": item_id,
+        "name": catalog[item_id]["name"],
+        "qty": qty,
+        "price": catalog[item_id]["price"]
+    })
+    update_cart_total()
+    return True
+
+def remove_from_cart(item_id):
+    """Remove item from cart"""
+    cart["items"] = [item for item in cart["items"] if item["item_id"] != item_id]
+    update_cart_total()
+
+def update_quantity(item_id, qty):
+    """Update item quantity in cart"""
+    for item in cart["items"]:
+        if item["item_id"] == item_id:
+            if qty <= 0:
+                remove_from_cart(item_id)
+            else:
+                item["qty"] = qty
+                update_cart_total()
+            return True
+    return False
+
+def list_cart():
+    """Return cart contents as string"""
+    if not cart["items"]:
+        return "Your cart is empty."
+    
+    items_str = "\n".join([f"{item['qty']}x {item['name']} - ₹{item['price'] * item['qty']}" for item in cart["items"]])
+    return f"Your cart:\n{items_str}\nTotal: ₹{cart['total']}"
+
+def update_cart_total():
+    """Update cart total"""
+    cart["total"] = sum(item["price"] * item["qty"] for item in cart["items"])
+
 
 class SalesSDR(Agent):
     def __init__(self) -> None:
         super().__init__(
-            instructions="""You are a warm, friendly Sales Development Representative (SDR) for our company.
+            instructions="""You are a friendly food & grocery ordering assistant. Your job is to help customers build their shopping cart and place orders.
+
+            CAPABILITIES:
+            - Order groceries, food, snacks, beverages, and prepared foods
+            - Add ingredients for specific dishes using recipe mappings
+            - Manage shopping cart (add, remove, update quantities)
+            - Calculate total prices and place orders
             
-            Your role is to:
-            1. Greet visitors warmly and make them feel welcome
-            2. Ask what brought them here and what they need help with
-            3. Keep conversations focused on understanding their needs
-            4. Use ONLY the FAQ content to answer product/company/pricing questions - DO NOT hallucinate
-            5. Naturally collect lead information throughout the conversation
-            6. When they're done, provide a summary and save their information
+            IMPORTANT: When customers request items, call the appropriate function:
+            - add_to_cart(item_name, quantity) for adding items
+            - remove_from_cart(item_name) for removing items
+            - update_quantity(item_name, quantity) for changing amounts
+            - show_cart() to display current cart
+            - place_order() when they say "place my order", "that's all", "I'm done"
             
-            Lead information to collect:
-            - name: Their full name
-            - company: Company they work for
-            - email: Contact email
-            - role: Their job title/role
-            - use_case: What they want to use our product for
-            - team_size: Size of their team
-            - timeline: When they're looking to implement
+            CONVERSATION FLOW:
+            1. Greet warmly and explain what you can do
+            2. Ask what they'd like to order
+            3. For recipe requests like "ingredients for pasta", use recipe mappings
+            4. Ask clarifying questions about quantity, size, brand when needed
+            5. Confirm every cart update verbally
+            6. When ready to order, summarize cart, calculate total, and save to JSON
             
-            Conversation flow:
-            - Start with warm greeting
-            - Ask what brought them here
-            - Listen to their needs and answer from FAQ
-            - Naturally weave in lead qualification questions
-            - When they say "that's all", "I'm done", "thank you" etc., summarize and save
-            
-            Be conversational, helpful, and professional. Focus on their needs first, qualification second.""",
+            Be helpful, ask clarifying questions, and always confirm cart changes.""",
         )
         # Use global lead_state
         global lead_state
@@ -74,6 +144,14 @@ class SalesSDR(Agent):
         self.session_started = False
         self.conversation_complete = False
         self.room = None
+        
+        # Recipe mappings for grocery requests
+        self.recipes = {
+            "peanut butter sandwich": ["bread_01", "peanut_butter_01"],
+            "pasta for two": ["pasta_01", "pasta_sauce_01"],
+            "tea": ["tea_bag_01", "milk_01", "sugar_01"],
+            "salad": ["lettuce_01", "tomato_01", "cucumber_01"]
+        }
         
         # Load FAQ data at startup
         self.company_name, self.description, self.pricing, self.faq_list = load_faq_data()
@@ -195,33 +273,52 @@ class SalesSDR(Agent):
             self.session_started = True
             return f"Hi there! Welcome to {self.company_name}. I'm here to help answer any questions you might have. What brought you to us today?"
         
-        # Check for end-of-call
-        if self.detect_end_of_call(user_input):
-            summary = self.generate_lead_summary()
-            if any(self.lead_state.values()):
-                self.save_lead_to_json()
-            self.reset_lead_state()
-            return f"{summary} Have a great day!"
+        user_lower = user_input.lower()
         
-        # Try to find FAQ answer first
-        faq_answer = self.find_faq_answer(user_input)
-        if faq_answer:
-            # After answering FAQ, ask for missing info if needed
-            missing_info_question = self.ask_for_missing_info()
-            if missing_info_question:
-                return f"{faq_answer} {missing_info_question}"
-            return faq_answer
+        # Check for recipe requests
+        if "ingredients for" in user_lower or "things for making" in user_lower or "for making" in user_lower:
+            for recipe_name, item_ids in self.recipes.items():
+                if recipe_name in user_lower:
+                    catalog = load_catalog()
+                    added_items = []
+                    for item_id in item_ids:
+                        if add_to_cart(item_id, 1):
+                            added_items.append(catalog[item_id]["name"])
+                    
+                    if added_items:
+                        items_text = " and ".join(added_items)
+                        return f"I've added {items_text} for your {recipe_name}. Anything else?"
+                    else:
+                        return f"Sorry, I couldn't find all ingredients for {recipe_name}."
         
-        # Extract lead information from user input
-        self.extract_lead_info(user_input)
+        # Check for end-of-order
+        if any(phrase in user_lower for phrase in ["place my order", "that's all", "i'm done"]):
+            if not cart["items"]:
+                return "Your cart is empty. Would you like to add some items first?"
+            
+            # Save order and summarize
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            order_data = {
+                "items": cart["items"],
+                "total": cart["total"],
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            orders_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "orders")
+            os.makedirs(orders_dir, exist_ok=True)
+            
+            order_path = os.path.join(orders_dir, f"order_{timestamp}.json")
+            with open(order_path, 'w', encoding='utf-8') as f:
+                json.dump(order_data, f, indent=2, ensure_ascii=False)
+            
+            summary = list_cart()
+            cart["items"] = []
+            cart["total"] = 0
+            
+            return f"Order placed successfully! {summary} Your order has been saved and will be processed shortly."
         
-        # Ask for missing information
-        missing_info_question = self.ask_for_missing_info()
-        if missing_info_question:
-            return missing_info_question
-        
-        # Default helpful response
-        return "That's great! Is there anything else about our product or company you'd like to know?"
+        # Default response
+        return "I can help you add items to your cart or get ingredients for recipes. What would you like to order?"
     
     def extract_lead_info(self, user_input: str):
         """Extract lead information from user input"""
